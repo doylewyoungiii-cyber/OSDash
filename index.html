@@ -813,7 +813,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
               </div>
               <sc-for list="{{ postRows }}" as="p" hint-placeholder-count="10">
                 <div style="display:grid;grid-template-columns:0.8fr 1.2fr 2.2fr 1fr 30px;gap:12px;align-items:center;padding:8px 18px;border-bottom:1px solid #F0EEE8;">
-                  <span style="font-size:12.5px;font-weight:700;color:#6B7076;">{{ p.dateTxt }}</span>
+                  <input type="date" value="{{ p.dateISO }}" onChange="{{ p.setDate }}" style="border:1px solid transparent;border-radius:6px;background:transparent;font-family:'Montserrat',sans-serif;font-size:12px;font-weight:700;color:#6B7076;padding:2px 0;min-width:0;cursor:pointer;">
                   <select name="pillar" ref="{{ p.refPillar }}" onChange="{{ p.set }}" style="border:1px solid transparent;border-radius:6px;padding:4px 2px;font-size:12.5px;font-weight:600;background:transparent;cursor:pointer;min-width:0;">
                     <sc-for list="{{ pillarOptions }}" as="po" hint-placeholder-count="6"><option value="{{ po }}">{{ po }}</option></sc-for>
                   </select>
@@ -2115,6 +2115,8 @@ class Component extends DCLogic {
         stBg: (PST[p.status] || PST.Idea)[0], stFg: (PST[p.status] || PST.Idea)[1],
         refStatus: (el) => { if (el) el.value = p.status; },
         refPillar: (el) => { if (el) el.value = p.pillar; },
+        dateISO: p.date ? new Date(Date.UTC(1899, 11, 30) + p.date * 86400000).toISOString().slice(0, 10) : '',
+        setDate: (e) => { const v = e.target.value; this.mut(dd => { dd.posts[i].date = v ? Math.round((Date.parse(v + 'T00:00:00Z') - Date.UTC(1899, 11, 30)) / 86400000) : null; }); },
         set: (e) => { const { name, value } = e.target; this.mut(dd => { dd.posts[i][name] = value; }); },
         del: () => this.mut(dd => dd.posts.splice(i, 1)),
       }));
