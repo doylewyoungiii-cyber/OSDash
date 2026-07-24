@@ -1936,7 +1936,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.21-1',
+      buildTag: '2026.07.24-1',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
