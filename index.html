@@ -1368,6 +1368,12 @@ class Component extends DCLogic {
   // Latest imported ERP bookings upload SUPERSEDES stored YoY 2026 actuals + agency YTD (goals untouched)
   applyBk(data) {
     try {
+      // one-time: clear seeded demo scoring inputs (opps, specs, pipeline $, priorities, blockers, touch dates) so only user-entered records drive scores
+      if (!data.scoresCleared) {
+        data.opps = []; data.specs = [];
+        (data.agents || []).forEach(a => { a.pipe = 0; a.pri = ''; a.blocker = ''; a.risk = ''; a.last = null; a.next = null; a.o1 = a.o1s = a.o1v = a.o2 = a.o2s = a.o2v = ''; a.cq = '—'; a.visit = '—'; });
+        data.scoresCleared = true;
+      }
       // ensure the app's baked-in bookings snapshot exists even in older cloud/local data (unless the user deleted it)
       const del = data.deletedUploads || [];
       ((window.XTL_DATA || {}).uploads || []).forEach(su => {
@@ -1962,7 +1968,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.24-9',
+      buildTag: '2026.07.24-10',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
