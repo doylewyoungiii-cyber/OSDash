@@ -1,4 +1,4 @@
-const CACHE = 'xtl-os-v2';
+const CACHE = 'xtl-os-v6';
 self.addEventListener('install', e => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(clients.claim()));
 self.addEventListener('fetch', e => {

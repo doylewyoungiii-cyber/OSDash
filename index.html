@@ -1188,6 +1188,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
                 <button onClick="{{ impConfirm }}" style="padding:9px 18px;background:#2E7D46;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-size:13px;font-weight:700;color:#FFFFFF;cursor:pointer;" style-hover="background:#256A3A;">✓ Confirm import</button>
               </div>
             </div>
+            <sc-if value="{{ impDaily }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:0 18px 12px;padding:10px 14px;background:#FDF6E3;border:1px solid #EAD9A8;border-radius:8px;font-size:12.5px;font-weight:600;color:#8A6D1F;">Daily change report detected — these amounts will be <b>added</b> to your current monthly and agency totals. Weekly / YTD summary reports still replace totals as before.</div>
+            </sc-if>
             <div style="display:grid;grid-template-columns:0.6fr 1.4fr 1.5fr 0.9fr 0.6fr 0.65fr 0.65fr;gap:10px;padding:8px 18px;background:#FAF9F6;border-top:1px solid #E7E4DD;border-bottom:1px solid #E7E4DD;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#8A8F95;text-transform:uppercase;">
               <span>Code</span><span>Name in Report</span><span>Match to Agency</span><span style="text-align:right;">Net Bookings</span><span style="text-align:right;">Added</span><span style="text-align:right;">Changed</span><span style="text-align:right;">Deleted</span>
             </div>
@@ -1354,6 +1357,9 @@ class Component extends DCLogic {
         data.uploads = defaults.uploads.filter(u => !have[u.id]).concat(savedUps);
         data.deletedUploads = del;
         data.settings = Object.assign({}, defaults.settings, s.settings || {});
+        data.repMap = Object.assign({}, defaults.repMap, s.repMap || {});
+        const house = defaults.agents.find(a => a.n === 'House — Doyle Young');
+        if (house && !(data.agents || []).some(a => a.n === house.n)) data.agents.unshift(house);
         localStorage.setItem('xtl_os_v1', JSON.stringify(data));
       }
     } catch (e) {}
@@ -1650,10 +1656,10 @@ class Component extends DCLogic {
     let spIdx = 12, custIdx = 8, dateIdx = 1;
     const ym = v => {
       const s = String(v == null ? '' : v).trim();
-      const m = s.match(/^(\d{1,2})\/\d{1,2}\/(\d{2,4})/);
-      if (m) { let y = +m[2]; if (y < 100) y += 2000; return { y, mo: +m[1] }; }
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+      if (m) { let y = +m[3]; if (y < 100) y += 2000; return { y, mo: +m[1], d: +m[2] }; }
       const n = parseFloat(s);
-      if (!isNaN(n) && n > 30000 && n < 60000) { const dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000); return { y: dt.getUTCFullYear(), mo: dt.getUTCMonth() + 1 }; }
+      if (!isNaN(n) && n > 30000 && n < 60000) { const dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000); return { y: dt.getUTCFullYear(), mo: dt.getUTCMonth() + 1, d: dt.getUTCDate() }; }
       return null;
     };
     const seedMap = (this.state.data && this.state.data.custMap) || {};
@@ -1680,13 +1686,17 @@ class Component extends DCLogic {
       for (let i = 4; i < custIdx; i++) { if (cells[i] !== '') { const v = num(cells[i]); if (v != null) { amt = v; break; } } }
       if (sp && cust) { votes[cust] = votes[cust] || {}; votes[cust][sp] = (votes[cust][sp] || 0) + 1; }
       const d8 = ym(cells[dateIdx]);
-      details.push({ sp, cust, amt: amt || 0, action, y: d8 ? d8.y : null, mo: d8 ? d8.mo : null });
+      details.push({ sp, cust, amt: amt || 0, action, y: d8 ? d8.y : null, mo: d8 ? d8.mo : null, d: d8 ? d8.d : null });
     });
     // distributor -> rep map: learned from this file's labeled rows, then from prior imports
     const custMap = {};
     Object.keys(votes).forEach(c => { custMap[c] = Object.keys(votes[c]).sort((a, b) => votes[c][b] - votes[c][a])[0]; });
     // multi-year reports: aggregate only the LATEST year so KPIs stay YTD-consistent
     const latestYear = details.reduce((mx, x) => x.y && x.y > mx ? x.y : mx, 0) || null;
+    // daily change report: all rows fall within a handful of dates -> amounts are deltas to ADD, not a YTD snapshot
+    const dayKeys = {};
+    details.forEach(x => { if (x.y === latestYear && x.mo && x.d) dayKeys[x.mo + '-' + x.d] = 1; });
+    const daily = !!latestYear && Object.keys(dayKeys).length > 0 && Object.keys(dayKeys).length <= 5;
     const monthly = latestYear ? Array(12).fill(0) : null;
     const bySp = {};
     details.forEach(x => {
@@ -1703,7 +1713,7 @@ class Component extends DCLogic {
       return { code, name: code, sp: '', net: Math.round(a.net * 100) / 100, added: a.added, changed: a.changed, deleted: a.deleted };
     }).sort((x, y) => y.net - x.net);
     if (!rows.length) return { err: 'Recognized an order-detail report but found no order rows to summarize.' };
-    return { rows, custMap, monthly, latestYear };
+    return { rows, custMap, monthly, latestYear, daily };
   }
   async handleImportFile(file) {
     this.setState({ impBusy: true, impErr: '', imp: null });
@@ -1765,7 +1775,7 @@ class Component extends DCLogic {
       const res = looksOrders ? this.parseOrderDetailGrid(grid) : this.parseGrid(grid, file.name);
       if (res.err) { this.setState({ impBusy: false, impErr: res.err }); return; }
       const rows = res.rows.map(r => Object.assign({}, r, { match: rm[r.code] || this.matchAgent(r.name) || '__skip' }));
-      this.setState({ impBusy: false, imp: { fileName: file.name, period: res.latestYear ? period + ' (' + res.latestYear + ' YTD)' : period, rows, custMap: res.custMap || null, monthly: res.monthly || null, latestYear: res.latestYear || null } });
+      this.setState({ impBusy: false, imp: { fileName: file.name, daily: !!res.daily, period: res.daily ? 'Daily + ' + period : (res.latestYear ? period + ' (' + res.latestYear + ' YTD)' : period), rows, custMap: res.custMap || null, monthly: res.monthly || null, latestYear: res.latestYear || null } });
     } catch (e) {
       this.setState({ impBusy: false, impErr: 'Could not read the file: ' + (e.message || e) });
     }
@@ -1936,7 +1946,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.24-4',
+      buildTag: '2026.07.24-8',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
@@ -2887,7 +2897,7 @@ class Component extends DCLogic {
       if (S.imp && S.imp.kind !== 'quotes') {
         const matched = S.imp.rows.filter(r => r.match !== '__skip').length;
         out.impFile = S.imp.fileName;
-        out.impSummary = S.imp.rows.length + ' rows parsed · ' + matched + ' will import';
+        out.impSummary = S.imp.rows.length + ' rows parsed · ' + matched + ' will import'; out.impDaily = !!S.imp.daily;
         out.impPeriod = S.imp.period;
         out.onImpPeriod = (e) => this.setState({ imp: Object.assign({}, S.imp, { period: e.target.value }) });
         out.impRows = S.imp.rows.map((r, i) => ({
@@ -2919,10 +2929,25 @@ class Component extends DCLogic {
             finalRows.forEach(fr => { if (fr.code) dd.repMap[fr.code] = fr.agency; });
             if (imp.custMap) dd.custMap = Object.assign(dd.custMap || {}, imp.custMap);
             dd.uploads = dd.uploads || [];
-            dd.uploads.push({ id: Date.now(), file: imp.fileName, period: imp.period, date: this.today(), by: 'Doyle W. Young III', status: 'Imported', records: finalRows.length, rows: finalRows, monthly: imp.monthly || null, yr: imp.latestYear || null });
+            let upMonthly = imp.monthly || null, upRows = finalRows, upYr = imp.latestYear || null;
+            if (imp.daily) {
+              // build a new cumulative snapshot = latest imported snapshot + today's deltas
+              const prevUps = dd.uploads.filter(u => u.status === 'Imported' && u.kind !== 'quotes' && u.monthly && u.yr === (imp.latestYear || 2026)).sort((a, b) => (a.date || 0) - (b.date || 0));
+              const prev = prevUps[prevUps.length - 1];
+              upMonthly = prev && prev.monthly ? prev.monthly.slice() : Array(12).fill(0);
+              (imp.monthly || []).forEach((v, i) => { upMonthly[i] = Math.round(((upMonthly[i] || 0) + (v || 0)) * 100) / 100; });
+              upRows = prev && prev.rows ? JSON.parse(JSON.stringify(prev.rows)) : [];
+              finalRows.forEach(fr => {
+                const ex = upRows.find(r => r.agency === fr.agency);
+                if (ex) { ex.net = Math.round((ex.net + fr.net) * 100) / 100; ex.added = (ex.added || 0) + fr.added; ex.changed = (ex.changed || 0) + fr.changed; ex.deleted = (ex.deleted || 0) + fr.deleted; }
+                else upRows.push(fr);
+              });
+              upYr = imp.latestYear || 2026;
+            }
+            dd.uploads.push({ id: Date.now(), file: imp.fileName, period: imp.period, date: this.today(), by: 'Doyle W. Young III', status: 'Imported', records: finalRows.length, rows: upRows, monthly: upMonthly, yr: upYr, daily: imp.daily || undefined });
             // flow the upload into the rest of the dashboard's math
-            if (imp.monthly && imp.latestYear === 2026 && dd.yoy) imp.monthly.forEach((v, i) => { if (v && dd.yoy[i]) dd.yoy[i].y26 = Math.round(v); });
-            if (imp.monthly) finalRows.forEach(fr => { const ag = dd.agents.find(a => a.n === fr.agency); if (ag) ag.ytd = Math.round(fr.net); });
+            if (upMonthly && upYr === 2026 && dd.yoy) upMonthly.forEach((v, i) => { if (v && dd.yoy[i]) dd.yoy[i].y26 = Math.round(v); });
+            if (upMonthly) upRows.forEach(fr => { const ag = dd.agents.find(a => a.n === fr.agency); if (ag) ag.ytd = Math.round(fr.net); });
           });
           this.setState({ imp: null, impErr: '' });
         };
