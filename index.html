@@ -83,6 +83,12 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
      <div style="min-width:{{ contentMinW }};">
 
       <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+        <sc-if value="{{ ovOverdue }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ goTodos }}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;padding:11px 16px;background:#FBEAE9;border:1px solid #EBC7C5;border-radius:10px;cursor:pointer;" style-hover="background:#F8E0DE;">
+            <span style="font-size:13px;font-weight:700;color:#B23E3A;">⚠ {{ ovOverdueTxt }}</span>
+            <span style="font-size:12.5px;font-weight:700;color:#B23E3A;">Open To-Do List →</span>
+          </div>
+        </sc-if>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;">
           <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
             <div style="background:#FFFFFF;border:1px solid #E7E4DD;border-radius:12px;padding:15px 17px;min-width:0;">
@@ -664,6 +670,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
               <sc-for list="{{ tdFilters }}" as="f" hint-placeholder-count="3">
                 <button onClick="{{ f.go }}" style="padding:6px 14px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};border-radius:20px;font-family:'Montserrat',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">{{ f.label }}</button>
               </sc-for>
+              <button onClick="{{ tdNotify }}" title="Get a browser notification when to-dos go past their due date (works while the app is open or installed)" style="padding:6px 14px;border:1px solid {{ tdNotifyBorder }};background:{{ tdNotifyBg }};color:{{ tdNotifyFg }};border-radius:20px;font-family:'Montserrat',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">{{ tdNotifyLabel }}</button>
               <button onClick="{{ tdOutlook }}" title="Download an .ics file of all open to-dos — open it in Outlook to add them to your calendar" style="padding:6px 14px;border:1px solid #0079C1;background:#FFFFFF;color:#0079C1;border-radius:20px;font-family:'Montserrat',sans-serif;font-size:12px;font-weight:700;cursor:pointer;" style-hover="background:#EAF4FB;">⤓ Outlook (.ics)</button>
             </div>
           </div>
@@ -1394,6 +1401,8 @@ class Component extends DCLogic {
   }
   componentDidMount() {
     this._bootStart = Date.now();
+    setTimeout(() => this.notifyOverdue(), 5000);
+    this._odTimer = setInterval(() => this.notifyOverdue(), 60 * 60 * 1000);
     const boot = () => {
       if (!window.XTL_DATA) { setTimeout(boot, 60); return; }
       // wait up to 6s for the Firebase SDK before falling back to local-only mode
@@ -1456,6 +1465,25 @@ class Component extends DCLogic {
     }, 600);
   }
 
+  overdueCount(d) {
+    const now = this.today(); let n = 0;
+    const chk = td => { if (!td.done && td.due && td.due < now) n++; };
+    (d.agents || []).forEach(a => (a.todos || []).forEach(chk));
+    (d.todos || []).forEach(chk);
+    return n;
+  }
+  notifyOverdue(force) {
+    try {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      const d = this.state.data; if (!d) return;
+      const n = this.overdueCount(d);
+      const today = new Date().toDateString();
+      if (!force && localStorage.getItem('xtl_od_notified') === today) return; // one alert per day
+      if (!n) { if (force) new Notification('Channel OS', { body: 'Alerts are on — nothing is overdue right now.', icon: 'icon-192.png' }); return; }
+      localStorage.setItem('xtl_od_notified', today);
+      new Notification('Channel OS — ' + n + ' to-do' + (n > 1 ? 's' : '') + ' overdue', { body: 'Open the To-Do List to clear ' + (n > 1 ? 'them' : 'it') + '.', icon: 'icon-192.png' });
+    } catch (e) {}
+  }
   // ---- Bookings (from ERP uploads) ----
   snapshots() {
     return (this.state.data.uploads || []).filter(u => u.status === 'Imported' && u.kind !== 'quotes').slice().sort((a, b) => (a.date || 0) - (b.date || 0)).map(u => {
@@ -1649,6 +1677,40 @@ class Component extends DCLogic {
     });
     return { quotes: list, reps, datesLabel };
   }
+  // Web-portal quote export CSV (Quote Status / Name / Quote Total / Created At / Partners -> Name)
+  parsePortalQuotes(grid) {
+    const head = grid[0] ? grid[0].map(c => String(c == null ? '' : c).trim().toLowerCase()) : [];
+    const col = re => head.findIndex(h => re.test(h));
+    const cSt = col(/^quote status$/), cName = col(/^name$/), cTot = col(/^quote total$/), cAt = col(/^created at$/), cAg = col(/partners/), cArch = col(/^archived$/);
+    if (cSt < 0 || cName < 0 || cTot < 0 || cAg < 0) return null;
+    const mos = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const byNo = {}, order = [];
+    grid.slice(1).forEach(r => {
+      const status = String(r[cSt] == null ? '' : r[cSt]).trim().toLowerCase();
+      if (!status || status === 'draft') return; // drafts have no totals yet
+      if (cArch >= 0 && String(r[cArch]).trim() === 'true') return;
+      const job = String(r[cName] == null ? '' : r[cName]).trim();
+      const agency = String(r[cAg] == null ? '' : r[cAg]).trim();
+      if (!job || !agency) return;
+      const total = this.parseNum(r[cTot]) || 0;
+      let date = null;
+      const dm = String(r[cAt] == null ? '' : r[cAt]).match(/([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/);
+      if (dm) { const mo = mos.indexOf(dm[1].slice(0, 3).toLowerCase()); if (mo >= 0) date = Math.round((Date.UTC(+dm[3], mo, +dm[2]) - Date.UTC(1899, 11, 30)) / 86400000); }
+      // stable id from agency+job so re-importing updates instead of duplicating
+      const s = agency + '|' + job; let h = 0;
+      for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) >>> 0;
+      const no = 'W' + h.toString(36);
+      const ex = byNo[no];
+      if (ex) { if (total > ex.total) ex.total = total; if (date && (!ex.date || date > ex.date)) ex.date = date; }
+      else { byNo[no] = { no, date, rep: agency, job, total, lines: 1 }; order.push(no); }
+    });
+    const list = order.map(no => byNo[no]);
+    if (!list.length) return { err: 'Recognized a portal quote export but found no pending/approved quotes in it (drafts are skipped).' };
+    const byAg = {};
+    list.forEach(q => { (byAg[q.rep] = byAg[q.rep] || []).push(q); });
+    const reps = Object.keys(byAg).sort().map(name => ({ code: name, name, count: byAg[name].length, total: byAg[name].reduce((s2, q) => s2 + (q.total || 0), 0), match: this.matchAgent(name) || '__skip' }));
+    return { quotes: list, reps, datesLabel: '' };
+  }
   parseOrderDetailGrid(grid) {
     const num = v => {
       if (typeof v === 'number') return v;
@@ -1787,6 +1849,13 @@ class Component extends DCLogic {
       const looksQuote = /QUOTE\s*REPORT/i.test(joined) || /quote/i.test(file.name) || qsrc.filter(r => /\b\d{1,2}\/\d{1,2}\/\d{2,4}\s+0*\d{5,7}\b/.test(r.join(' '))).length >= 5;
       const rm = (this.state.data && this.state.data.repMap) || {};
       if (looksQuote) {
+        const resP = this.parsePortalQuotes(qsrc);
+        if (resP) {
+          if (resP.err) { this.setState({ impBusy: false, impErr: resP.err }); return; }
+          resP.reps.forEach(r => { if (rm[r.code]) r.match = rm[r.code]; });
+          this.setState({ impBusy: false, imp: { kind: 'quotes', fileName: file.name, period: period, reps: resP.reps, quotes: resP.quotes } });
+          return;
+        }
         const resQ = this.parseQuoteGrid(qsrc, file.name);
         if (resQ.err) { this.setState({ impBusy: false, impErr: resQ.err }); return; }
         resQ.reps.forEach(r => { if (rm[r.code]) r.match = rm[r.code]; });
@@ -1968,7 +2037,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.24-10',
+      buildTag: '2026.07.24-12',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
@@ -2060,6 +2129,9 @@ class Component extends DCLogic {
         toggle: () => this.mut(dd => { const arr = x.ai < 0 ? (dd.todos || []) : (dd.agents[x.ai].todos || []); const t2 = arr[x.ti]; if (t2) t2.done = true; }),
       }));
       out.ovTodoN = allTd.length + ' open';
+      const ovOd = allTd.filter(x => x.td.due && x.td.due < nowO).length;
+      out.ovOverdue = ovOd > 0;
+      out.ovOverdueTxt = ovOd + ' to-do' + (ovOd > 1 ? 's are' : ' is') + ' past due date';
       out.ovTodoEmpty = allTd.length === 0;
       out.ovTodoMore = allTd.length > 8 ? '+ ' + (allTd.length - 8) + ' more' : '';
       out.goTodos = () => this.setState({ view: 'todos' });
@@ -2434,6 +2506,13 @@ class Component extends DCLogic {
       });
       const vis = all.filter(x => filt === 'All' ? true : filt === 'Done' ? x.td.done : !x.td.done)
         .sort((p, q) => ((p.td.done ? 1 : 0) - (q.td.done ? 1 : 0)) || ((p.td.due ?? 1e9) - (q.td.due ?? 1e9)) || (p.a ? p.a.n : '').localeCompare(q.a ? q.a.n : ''));
+      const ntfOn = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+      out.tdNotifyLabel = ntfOn ? '🔔 Alerts on' : '🔔 Enable alerts';
+      out.tdNotifyBg = ntfOn ? '#E4F2E8' : '#FFFFFF'; out.tdNotifyFg = ntfOn ? '#2E7D46' : '#4A4F55'; out.tdNotifyBorder = ntfOn ? '#BFDCC8' : '#DAD6CD';
+      out.tdNotify = () => {
+        if (typeof Notification === 'undefined') { alert('This browser does not support notifications.'); return; }
+        Notification.requestPermission().then(p => { this.forceUpdate(); if (p === 'granted') { try { localStorage.removeItem('xtl_od_notified'); } catch (e) {} this.notifyOverdue(true); } });
+      };
       const tgt = (dd, x) => x.ai < 0 ? (dd.todos = dd.todos || []) : dd.agents[x.ai].todos;
       out.tdRows = vis.map(x => ({
         agency: x.a ? x.a.n : 'General', agColor: x.a ? '#0079C1' : '#8A8F95',
@@ -2475,6 +2554,7 @@ class Component extends DCLogic {
           L.push('BEGIN:VEVENT', 'UID:xtl-todo-' + i + '-' + dt + '@channelos', 'DTSTAMP:' + stamp,
             'DTSTART;VALUE=DATE:' + dt, 'DTEND;VALUE=DATE:' + nd,
             'SUMMARY:' + ((x.a ? '[' + x.a.n + '] ' : '[General] ') + x.td.t).replace(/[\\,;]/g, ' '),
+            'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Channel OS to-do due', 'TRIGGER:PT9H', 'END:VALARM',
             'END:VEVENT');
         });
         L.push('END:VCALENDAR');
