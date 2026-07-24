@@ -439,19 +439,6 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
               </sc-for>
               <sc-if value="{{ detQtsMore }}" hint-placeholder-val="{{ false }}"><div onClick="{{ goQuotes }}" style="font-size:12px;font-weight:700;color:#8A8F95;padding:8px 2px 0;cursor:pointer;" style-hover="color:#0079C1;">{{ detQtsMore }}</div></sc-if>
               <sc-if value="{{ detNoQts }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:#B9B4A9;padding:8px 2px;">No open quotes — import a quote report in the Sales Import Center</div></sc-if>
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;">
-                <div style="font-family:'Montserrat';font-weight:700;font-size:16px;">Job Log</div>
-                <div style="font-size:12px;font-weight:700;color:#8A8F95;">{{ detJobsSum }}</div>
-              </div>
-              <sc-for list="{{ detJobs }}" as="j" hint-placeholder-count="3">
-                <div style="display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px solid #F0EEE8;">
-                  <input value="{{ j.name }}" onChange="{{ j.setName }}" placeholder="Job name" style="flex:1;min-width:0;border:1px solid transparent;border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;background:transparent;" style-focus="border-color:#0079C1;background:#FFFFFF;outline:none;" style-hover="border-color:#DAD6CD;" />
-                  <input value="{{ j.total }}" onChange="{{ j.setTotal }}" placeholder="$" style="flex:none;width:90px;text-align:right;border:1px solid transparent;border-radius:6px;padding:5px 6px;font-size:12.5px;font-weight:700;font-family:inherit;background:transparent;" style-focus="border-color:#0079C1;background:#FFFFFF;outline:none;" style-hover="border-color:#DAD6CD;" />
-                  <button onClick="{{ j.del }}" style="flex:none;border:none;background:transparent;color:#B9B4A9;font-size:14px;cursor:pointer;padding:2px;" style-hover="color:#D9534F;">×</button>
-                </div>
-              </sc-for>
-              <sc-if value="{{ detNoJobs }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:#B9B4A9;padding:8px 2px;">No jobs logged yet</div></sc-if>
-              <div onClick="{{ detAddJob }}" style="font-size:12px;font-weight:700;color:#0079C1;padding:8px 2px 0;cursor:pointer;" style-hover="text-decoration:underline;">＋ Add job</div>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:14px;">
@@ -1385,14 +1372,6 @@ class Component extends DCLogic {
       });
     } catch (e) {}
     try {
-      // seed per-agency job logs from the baked snapshot the first time
-      ((window.XTL_DATA || {}).agents || []).forEach(sa => {
-        if (!sa.jobs) return;
-        const ag = (data.agents || []).find(a => a.n === sa.n);
-        if (ag && !ag.jobs) ag.jobs = JSON.parse(JSON.stringify(sa.jobs));
-      });
-    } catch (e) {}
-    try {
       const ups = (data.uploads || []).filter(u => u.status === 'Imported' && u.kind !== 'quotes' && u.monthly && u.yr === 2026).sort((a, b) => (a.date || 0) - (b.date || 0));
       const u = ups[ups.length - 1];
       if (!u) return data;
@@ -1834,7 +1813,7 @@ class Component extends DCLogic {
     const specs = (d.specs || []).filter(s => s.agent === a.n && s.stage !== 'Lost').length;
     let rev;
     if (!a.prev) rev = a.ytd > 0 ? 80 : 35;
-    else rev = Math.max(0, Math.min(100, Math.round(a.ytd / (a.prev * monthsElapsed / 12) * 100)));
+    else rev = Math.max(0, Math.min(100, Math.round(a.ytd / a.prev * 100))); // prev = 2025 same period; 100 = matching last year's pace
     const opp = Math.min(100, opps * 30 + (a.pipe > 0 ? 40 : 0));
     const courses = st.courseList || [];
     const pass = st.quizPass ?? 80;
@@ -1957,7 +1936,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.24-2',
+      buildTag: '2026.07.24-4',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
@@ -2147,7 +2126,7 @@ class Component extends DCLogic {
       const w = (d.settings || {}).weights || {};
       const cl = this.certLevel(a.n), cc = this.certColors(cl.level);
       out.detKpis = [
-        { label: 'YTD 2026', value: this.fmtK(a.ytd), valueColor: '#1D2126', delta: 'FY2025: ' + this.fmtK(a.prev) },
+        { label: 'YTD 2026', value: this.fmtK(a.ytd), valueColor: '#1D2126', delta: '2025 same period: ' + this.fmtK(a.prev) },
         { label: 'YoY vs 2025', value: this.yoyOf(a), valueColor: this.yoyColor(a), delta: 'same-period pacing' },
         { label: 'Quote Pipeline', value: this.fmtK(a.pipe), valueColor: '#1D2126', delta: 'parsed open quotes' },
         { label: 'Health Score', value: h, valueColor: hb[1], delta: 'weighted · see breakdown' },
@@ -2210,16 +2189,6 @@ class Component extends DCLogic {
       out.detQtsSum = aQts.length ? aQts.length + ' open · ' + this.fmtK(aQts.reduce((s, q) => s + (q.total || 0), 0)) : '';
       out.detQtsMore = aQts.length > 12 ? '+ ' + (aQts.length - 12) + ' more in Quote Bank' : '';
       out.goQuotes = () => this.setState({ view: 'quotes', sel: -1 });
-      const aJobs = a.jobs || [];
-      out.detJobs = aJobs.map((j, ji) => ({
-        name: j.name, total: j.total ? Math.round(j.total).toLocaleString() : '',
-        setName: (e) => { const idx = S.sel; this.mut(dd => { dd.agents[idx].jobs[ji].name = e.target.value; }); },
-        setTotal: (e) => { const idx = S.sel; this.mut(dd => { dd.agents[idx].jobs[ji].total = parseFloat(String(e.target.value).replace(/[^0-9.\-]/g, '')) || 0; }); },
-        del: () => { const idx = S.sel; this.mut(dd => dd.agents[idx].jobs.splice(ji, 1)); },
-      }));
-      out.detNoJobs = aJobs.length === 0;
-      out.detJobsSum = aJobs.length ? aJobs.length + ' jobs · ' + this.fmtK(aJobs.reduce((s, j) => s + (j.total || 0), 0)) : '';
-      out.detAddJob = () => { const idx = S.sel; this.mut(dd => { dd.agents[idx].jobs = dd.agents[idx].jobs || []; dd.agents[idx].jobs.unshift({ name: '', total: 0 }); }); };
       out.detCert = cl.level; out.detCertBg = cc[0]; out.detCertFg = cc[1];
       out.detCertSub = 'Level 1: ' + cl.done + '/' + cl.total + ' required courses complete (quiz ≥ ' + ((d.settings || {}).quizPass ?? 80) + ' to count)';
       const courseList = ((d.settings || {}).courseList) || [];
