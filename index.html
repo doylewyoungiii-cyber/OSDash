@@ -1679,11 +1679,23 @@ class Component extends DCLogic {
       for (let i = cells.length - 1; i > 0; i--) { if (/^(Add|Change|Delete)$/i.test(cells[i])) { action = cells[i].toLowerCase(); break; } }
       if (!action) { const am = joined.match(/\b(Add|Change|Delete)\s*$/i); if (am) action = am[1].toLowerCase(); }
       const suffix = { CO: 1, IN: 1, INC: 1, LLC: 1, LTD: 1, CORP: 1, PARK: 1, MFG: 1, USA: 1, ACCT: 1, CITY: 1, SUPP: 1 };
-      if (!/^[A-Z]{2,4}$/.test(sp)) { const sm = joined.match(/\b([A-Z]{2,4})\s+(Add|Change|Delete)\s*$/); sp = sm && !suffix[sm[1]] ? sm[1] : ''; }
+      if (!/^[A-Z][A-Z0-9]{1,3}$/.test(sp)) { const sm = joined.match(/\b([A-Z][A-Z0-9]{1,3})\s+(Add|Change|Delete)\s*$/); sp = sm && !suffix[sm[1]] ? sm[1] : ''; }
       if (suffix[sp]) sp = '';
-      const cust = (cells[custIdx] || '').split(/\s\s+/)[0].trim();
-      let amt = null;
-      for (let i = 4; i < custIdx; i++) { if (cells[i] !== '') { const v = num(cells[i]); if (v != null) { amt = v; break; } } }
+      let cust = (cells[custIdx] || '').split(/\s\s+/)[0].trim(), amt = null;
+      // Amount + Cust No are often merged into one cell (esp. PDF->Excel conversions): "25.00   BORSTA" — or the whole line sits in one cell
+      const am2 = joined.match(/(-?[\d,]+\.\d{2}-?)\s+([A-Z][A-Z0-9]{3,6})\b/);
+      if (am2) { amt = num(am2[1]); cust = am2[2]; }
+      if (amt == null) {
+        for (let i = 4; i < custIdx; i++) {
+          if (cells[i] === '') continue;
+          const v = num(cells[i]);
+          if (v == null) continue;
+          if (typeof r[i] === 'number' && v > 40000 && v < 60000 && v === Math.round(v)) continue; // excel date serial, not money
+          if (!/\.\d{2}(?!\d)/.test(String(cells[i])) && v === Math.round(v)) continue; // whole numbers are quantities; money always prints cents
+          amt = v; break;
+        }
+      }
+      if (/^\d/.test(cust) || cust.length < 3) cust = '';
       if (sp && cust) { votes[cust] = votes[cust] || {}; votes[cust][sp] = (votes[cust][sp] || 0) + 1; }
       const d8 = ym(cells[dateIdx]);
       details.push({ sp, cust, amt: amt || 0, action, y: d8 ? d8.y : null, mo: d8 ? d8.mo : null, d: d8 ? d8.d : null });
@@ -1698,11 +1710,15 @@ class Component extends DCLogic {
     details.forEach(x => { if (x.y === latestYear && x.mo && x.d) dayKeys[x.mo + '-' + x.d] = 1; });
     const daily = !!latestYear && Object.keys(dayKeys).length > 0 && Object.keys(dayKeys).length <= 5;
     const monthly = latestYear ? Array(12).fill(0) : null;
+    // rows whose date cell was garbled still count toward the report's dominant month
+    const moCount = {};
+    details.forEach(x => { if (x.mo && (!latestYear || x.y === latestYear)) moCount[x.mo] = (moCount[x.mo] || 0) + 1; });
+    const domMo = +((Object.keys(moCount).sort((a, b) => moCount[b] - moCount[a])[0]) || 0) || null;
     const bySp = {};
     details.forEach(x => {
       if (x.cust === 'XLTEST') return;
       if (latestYear && x.y && x.y !== latestYear) return;
-      if (monthly && x.mo) monthly[x.mo - 1] += x.amt;
+      const xmo = x.mo || domMo; if (monthly && xmo) monthly[xmo - 1] += x.amt;
       const sp = x.sp || custMap[x.cust] || seedMap[x.cust] || '(no rep)';
       const agg = bySp[sp] = bySp[sp] || { net: 0, added: 0, changed: 0, deleted: 0 };
       agg.net += x.amt;
@@ -1946,7 +1962,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.24-8',
+      buildTag: '2026.07.24-9',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
