@@ -1681,8 +1681,9 @@ class Component extends DCLogic {
   parsePortalQuotes(grid) {
     const head = grid[0] ? grid[0].map(c => String(c == null ? '' : c).trim().toLowerCase()) : [];
     const col = re => head.findIndex(h => re.test(h));
-    const cSt = col(/^quote status$/), cName = col(/^name$/), cTot = col(/^quote total$/), cAt = col(/^created at$/), cAg = col(/partners/), cArch = col(/^archived$/);
-    if (cSt < 0 || cName < 0 || cTot < 0 || cAg < 0) return null;
+    const cSt = col(/^(quote )?status$/), cName = col(/^name$/), cTot = col(/^(quote )?total$/), cAt = col(/^created at$/), cArch = col(/^archived$/);
+    const cAg = col(/partners?\s*(→|->)?\s*name$|^partner name$/), cAg2 = col(/^created for/);
+    if (cSt < 0 || cName < 0 || cTot < 0 || (cAg < 0 && cAg2 < 0)) return null;
     const mos = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
     const byNo = {}, order = [];
     grid.slice(1).forEach(r => {
@@ -1690,19 +1691,21 @@ class Component extends DCLogic {
       if (!status || status === 'draft') return; // drafts have no totals yet
       if (cArch >= 0 && String(r[cArch]).trim() === 'true') return;
       const job = String(r[cName] == null ? '' : r[cName]).trim();
-      const agency = String(r[cAg] == null ? '' : r[cAg]).trim();
+      // newer exports carry "Partners -> Name"; the older one leaves it blank and only fills "Created for: Company"
+      const agency = (cAg >= 0 ? String(r[cAg] == null ? '' : r[cAg]).trim() : '') || (cAg2 >= 0 ? String(r[cAg2] == null ? '' : r[cAg2]).trim() : '');
       if (!job || !agency) return;
+      if (/^revision\s*\d*$/i.test(job)) return; // placeholder rows from the portal's revision flow
       const total = this.parseNum(r[cTot]) || 0;
       let date = null;
       const dm = String(r[cAt] == null ? '' : r[cAt]).match(/([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/);
       if (dm) { const mo = mos.indexOf(dm[1].slice(0, 3).toLowerCase()); if (mo >= 0) date = Math.round((Date.UTC(+dm[3], mo, +dm[2]) - Date.UTC(1899, 11, 30)) / 86400000); }
-      // stable id from agency+job so re-importing updates instead of duplicating
-      const s = agency + '|' + job; let h = 0;
+      // stable id from agency + normalized job name, so the same project re-exported tomorrow updates instead of duplicating
+      const s = agency.toUpperCase().replace(/[^A-Z0-9]/g, '') + '|' + job.toUpperCase().replace(/[^A-Z0-9]/g, ''); let h = 0;
       for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) >>> 0;
       const no = 'W' + h.toString(36);
       const ex = byNo[no];
       if (ex) { if (total > ex.total) ex.total = total; if (date && (!ex.date || date > ex.date)) ex.date = date; }
-      else { byNo[no] = { no, date, rep: agency, job, total, lines: 1 }; order.push(no); }
+      else { byNo[no] = { no, date, rep: agency, job, total, lines: 1, pStatus: status === 'approved' ? 'Working' : 'Open' }; order.push(no); }
     });
     const list = order.map(no => byNo[no]);
     if (!list.length) return { err: 'Recognized a portal quote export but found no pending/approved quotes in it (drafts are skipped).' };
@@ -2037,7 +2040,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.24-12',
+      buildTag: '2026.07.25-1',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
@@ -2980,18 +2983,18 @@ class Component extends DCLogic {
             });
             dd.repMap = Object.assign(dd.repMap || {}, map);
             dd.quotes = dd.quotes || [];
-            let n = 0;
+            let n = 0, newN = 0, upN = 0;
             imp.quotes.forEach(q => {
               const agency = map[q.rep || '?'];
               if (!agency) return;
-              n++;
+              n++; newN++;
               const ex = dd.quotes.find(z => z.no === q.no);
-              if (ex) Object.assign(ex, { date: q.date || ex.date, job: q.job || ex.job, total: q.total != null ? q.total : ex.total, lines: q.lines || ex.lines, agency });
-              else dd.quotes.push({ no: q.no, date: q.date, job: q.job || '', agency, total: q.total || 0, lines: q.lines || 0, status: 'Open', next: '', note: '' });
+              if (ex) { newN--; upN++; Object.assign(ex, { date: q.date || ex.date, job: q.job || ex.job, total: q.total != null ? q.total : ex.total, lines: q.lines || ex.lines, agency }); }
+              else dd.quotes.push({ no: q.no, date: q.date, job: q.job || '', agency, total: q.total || 0, lines: q.lines || 0, status: q.pStatus || 'Open', next: '', note: '' });
             });
             dd.agents.forEach(a => { a.pipe = dd.quotes.filter(z => z.agency === a.n && (z.status === 'Open' || z.status === 'Working')).reduce((s, z) => s + (z.total || 0), 0); });
             dd.uploads = dd.uploads || [];
-            dd.uploads.push({ id: Date.now(), kind: 'quotes', file: imp.fileName, period: imp.period, date: this.today(), by: 'Doyle W. Young III', status: 'Imported', records: n, rows: [] });
+            dd.uploads.push({ id: Date.now(), kind: 'quotes', file: imp.fileName, period: imp.period + ' — ' + newN + ' new / ' + upN + ' updated', date: this.today(), by: 'Doyle W. Young III', status: 'Imported', records: n, rows: [] });
           });
           this.setState({ imp: null, impErr: '', view: 'quotes' });
         };
