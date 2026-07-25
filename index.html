@@ -266,6 +266,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
           </div>
           <div style="background:#FFFFFF;border:1px solid #E7E4DD;border-radius:12px;padding:18px 20px;">
             <div style="font-family:'Montserrat';font-weight:700;font-size:16px;">Biggest Open Opportunities</div>
+            <div style="font-size:12px;color:#8A8F95;margin-top:2px;">Top quotes by value, plus any logged opportunities</div>
             <div style="display:flex;flex-direction:column;margin-top:8px;">
               <sc-for list="{{ topOpps }}" as="o" hint-placeholder-count="5">
                 <div style="display:flex;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid #F0EEE8;">
@@ -1126,8 +1127,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
           <div style="background:#FFFFFF;border:1px solid #E7E4DD;border-radius:12px;padding:18px 20px;">
             <div style="font-family:'Montserrat';font-weight:700;font-size:16px;">Definitions</div>
             <div style="display:grid;grid-template-columns:150px 1fr;gap:8px 14px;margin-top:12px;font-size:13px;line-height:1.55;color:#4A4F55;">
-              <b>Health Score</b><span>Weighted 0–100 composite: Revenue pacing, Opportunities, Training, CEU/AIA, Strategic accounts, Reporting compliance. Weights live in Settings; the per-agency breakdown is on each agency page.</span>
+              <b>Health Score</b><span>Weighted 0–100 composite. Today only two things count: <b>Revenue pacing (65%)</b> and <b>Quoting activity (35%)</b> — Training, CEU/AIA, Strategic and Reporting are weighted 0 until those programs start. Raise them in Settings when they do; the per-agency breakdown is on each agency page.</span>
               <b>Revenue pacing</b><span>YTD 2026 vs the same months of 2025. New agencies with revenue score 80; new with none score 35.</span>
+              <b>Quoting activity</b><span>Live quotes in the Quote Bank: 12 pts each, plus a value bonus (up to 45 at $500K+ open). Logged opportunities add 12 each.</span>
               <b>Reporting compliance</b><span>Days since last logged touch: ≤14d = 100 · ≤30d = 70 · ≤60d = 40 · beyond = 10.</span>
               <b>Category</b><span>Protect = keep close, don't break it · Build = invest to grow · Push = demand more from existing capacity · Fix = behavioral or structural problem · Exit = transition out.</span>
               <b>Spec stages</b><span>Target Identified → Specifier Engaged → Basis of Design → Named Specification → Bid Stage → Awarded. A spec is only "Named" when XtraLight appears on the drawing.</span>
@@ -1380,6 +1382,12 @@ class Component extends DCLogic {
         data.opps = []; data.specs = [];
         (data.agents || []).forEach(a => { a.pipe = 0; a.pri = ''; a.blocker = ''; a.risk = ''; a.last = null; a.next = null; a.o1 = a.o1s = a.o1v = a.o2 = a.o2s = a.o2v = ''; a.cq = '—'; a.visit = '—'; });
         data.scoresCleared = true;
+      }
+      // scoring runs on what we actually track today: bookings + quotes. Training/CEU/strategic/reporting stay at 0 until those programs start (adjustable in Settings).
+      if (!data.weightsSalesOnly) {
+        data.settings = data.settings || {};
+        data.settings.weights = { rev: 65, opp: 35, training: 0, ceu: 0, strategic: 0, reporting: 0 };
+        data.weightsSalesOnly = true;
       }
       // ensure the app's baked-in bookings snapshot exists even in older cloud/local data (unless the user deleted it)
       const del = data.deletedUploads || [];
@@ -1918,7 +1926,10 @@ class Component extends DCLogic {
     let rev;
     if (!a.prev) rev = a.ytd > 0 ? 80 : 35;
     else rev = Math.max(0, Math.min(100, Math.round(a.ytd / a.prev * 100))); // prev = 2025 same period; 100 = matching last year's pace
-    const opp = Math.min(100, opps * 30 + (a.pipe > 0 ? 40 : 0));
+    const openQ = (d.quotes || []).filter(q => q.agency === a.n && (q.status === 'Open' || q.status === 'Working'));
+    const qVal = openQ.reduce((s, q) => s + (q.total || 0), 0) || a.pipe || 0;
+    // quoting activity: volume of live quotes + how much value is on the table
+    const opp = Math.min(100, openQ.length * 12 + opps * 12 + (qVal >= 500000 ? 45 : qVal >= 250000 ? 35 : qVal >= 100000 ? 25 : qVal >= 25000 ? 15 : qVal > 0 ? 8 : 0));
     const courses = st.courseList || [];
     const pass = st.quizPass ?? 80;
     const doneCourses = courses.filter(cs => (d.trainingRecs || []).some(r => r.agent === a.n && r.course === cs && r.status === 'Completed' && (r.quiz == null || r.quiz >= pass))).length;
@@ -2040,7 +2051,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.25-1',
+      buildTag: '2026.07.25-2',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
@@ -2184,7 +2195,11 @@ class Component extends DCLogic {
         mkList2('Intervention List', '#C0433F', hAll.filter(x => x.h < y0).sort((p, q2) => p.h - q2.h)),
       ];
 
-      out.topOpps = d.opps.filter(o => o.vNum > 0 && o.stage !== 'Won' && o.stage !== 'Lost').sort((a, b) => b.vNum - a.vNum).slice(0, 7).map(o => ({
+      const bigItems = d.opps.filter(o => o.vNum > 0 && o.stage !== 'Won' && o.stage !== 'Lost')
+        .map(o => ({ name: o.name, agent: o.agent, vNum: o.vNum, value: o.value, stage: o.stage }))
+        .concat((d.quotes || []).filter(q => (q.status === 'Open' || q.status === 'Working') && (q.total || 0) > 0)
+          .map(q => ({ name: q.job || ('Quote #' + q.no), agent: q.agency, vNum: q.total, value: this.fmtK(q.total), stage: q.status === 'Working' ? 'Quoted' : 'Open Quote' })));
+      out.topOpps = bigItems.sort((a, b) => b.vNum - a.vNum).slice(0, 7).map(o => ({
         name: o.name, agent: o.agent, value: o.value, stage: o.stage,
         stageBg: (STAGE[o.stage] || STAGE.Targeted)[0], stageFg: (STAGE[o.stage] || STAGE.Targeted)[1],
       }));
@@ -2242,7 +2257,7 @@ class Component extends DCLogic {
       const pc = v => v >= 70 ? '#3BA55D' : v >= 45 ? '#E8B931' : '#D9534F';
       out.detParts = [
         { label: 'Revenue pacing', w: w.rev + '%', v: parts.rev, color: pc(parts.rev) },
-        { label: 'Opportunities', w: w.opp + '%', v: parts.opp, color: pc(parts.opp) },
+        { label: 'Quoting activity', w: w.opp + '%', v: parts.opp, color: pc(parts.opp) },
         { label: 'Training', w: w.training + '%', v: parts.tr, color: pc(parts.tr) },
         { label: 'CEU / AIA', w: w.ceu + '%', v: parts.ceu, color: pc(parts.ceu) },
         { label: 'Strategic accounts', w: w.strategic + '%', v: parts.strat, color: pc(parts.strat) },
