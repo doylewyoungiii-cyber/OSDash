@@ -488,15 +488,20 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
               <div style="font-size:13px;color:#4A4F55;margin-top:8px;line-height:1.7;">
                 <div><b>Status:</b> <span style="font-weight:700;color:{{ detCeuColor }};">{{ detCeuStatus }}</span></div>
                 <div><b>Champion:</b> {{ detCeuChamp }}</div>
-                <div><b>Events delivered:</b> {{ detCeuDelivered }} · <b>Attendees:</b> {{ detCeuAtt }}</div>
+                <div><b>Events delivered:</b> {{ detCeuDelivered }} of {{ detCeuEvTarget }} · <b>Attendees:</b> {{ detCeuAtt }}</div>
+                <div><b>Certified presenters:</b> {{ detCeuPresN }} of {{ detCeuPresTarget }}{{ detCeuPresNames }}</div>
+                <div style="font-size:12px;color:#8A8F95;">Target scales with sales — a {{ detCeuTier }} book needs {{ detCeuPresTarget }} certified presenter(s) and {{ detCeuEvTarget }} events/yr. Presenters are counted from the CEU event log.</div>
                 <div><b>Next action:</b> {{ detCeuNext }}</div>
               </div>
             </div>
             <div style="background:#FFFFFF;border:1px solid #E7E4DD;border-radius:12px;padding:18px 20px;">
-              <div style="font-family:'Montserrat';font-weight:700;font-size:16px;">Contact Cadence</div>
-              <div style="font-size:13px;color:#4A4F55;margin-top:8px;line-height:1.7;">
-                <div><b>Last touch:</b> {{ detLast }} <span style="font-weight:800;color:{{ detDaysColor }};">({{ detDays }})</span></div>
-                <div><b>Next scheduled:</b> {{ detNext }}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                <div style="font-family:'Montserrat';font-weight:700;font-size:16px;">Contact Cadence</div>
+                <button onClick="{{ detTouch }}" style="border:1px solid #C4DCEC;background:#F0F7FC;color:#0079C1;border-radius:8px;padding:5px 12px;font-family:'Montserrat',sans-serif;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;" style-hover="background:#E1F0FA;">Touched today</button>
+              </div>
+              <div style="font-size:13px;color:#4A4F55;margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b>Last touch:</b> <input type="date" value="{{ detLastISO }}" onChange="{{ detSetLast }}" style="border:1px solid #E7E4DD;border-radius:6px;padding:3px 6px;font-size:12px;font-family:inherit;background:#FAF9F6;cursor:pointer;"> <span style="font-weight:800;color:{{ detDaysColor }};">{{ detDays }}</span></div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b>Next scheduled:</b> <input type="date" value="{{ detNextISO }}" onChange="{{ detSetNext }}" style="border:1px solid #E7E4DD;border-radius:6px;padding:3px 6px;font-size:12px;font-family:inherit;background:#FAF9F6;cursor:pointer;"></div>
                 <div><b>Planned trip:</b> <span style="font-weight:700;color:{{ detTripColor }};">{{ detTrip }}</span></div>
               </div>
             </div>
@@ -813,7 +818,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
             <div style="padding:6px 18px 16px;font-size:13px;color:#8A8F95;">No Data Available — add an agency to start tracking its AIA presenter certification.</div>
           </sc-if>
           <div style="display:grid;grid-template-columns:1.5fr 1fr 1.7fr 1.2fr 0.9fr 1.9fr 0.8fr;gap:12px;padding:8px 18px;background:#FAF9F6;border-top:1px solid #E7E4DD;border-bottom:1px solid #E7E4DD;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#8A8F95;text-transform:uppercase;">
-            <span>Agency</span><span>Champion</span><span>Certification Steps</span><span>Status</span><span>Delivered</span><span>Next Action</span><span>Due</span>
+            <span>Agency</span><span>Champion</span><span>Certification Steps</span><span>Status</span><span>Presenters · events</span><span>Next Action</span><span>Due</span>
           </div>
           <sc-for list="{{ ceuProfRows }}" as="p" hint-placeholder-count="10">
             <div style="display:grid;grid-template-columns:1.5fr 1fr 1.7fr 1.2fr 0.9fr 1.9fr 0.8fr;gap:12px;align-items:center;padding:8px 18px;border-bottom:1px solid #F0EEE8;">
@@ -827,7 +832,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
               <select name="status" ref="{{ p.refStatus }}" onChange="{{ p.set }}" style="border:1px solid transparent;border-radius:6px;padding:4px 4px;font-size:11.5px;font-weight:700;background:{{ p.stBg }};color:{{ p.stFg }};cursor:pointer;min-width:0;">
                 <sc-for list="{{ ceuStatusOptions }}" as="cs" hint-placeholder-count="7"><option value="{{ cs }}">{{ cs }}</option></sc-for>
               </select>
-              <span style="font-size:12.5px;font-weight:700;color:#4A4F55;">{{ p.delivered }} <span style="font-weight:500;color:#8A8F95;">/ {{ p.att }} att</span></span>
+              <span style="font-size:12.5px;font-weight:700;color:{{ p.evColor }};">{{ p.presN }}/{{ p.presTarget }} <span style="font-weight:500;color:#8A8F95;">pres · {{ p.delivered }}/{{ p.evTarget }} ev</span></span>
               <input name="nextAction" value="{{ p.next }}" onChange="{{ p.set }}" placeholder="Next action…" style="border:none;background:transparent;font-size:12.5px;color:#4A4F55;padding:2px 0;min-width:0;">
               <span style="font-size:12px;font-weight:700;color:{{ p.dueColor }};">{{ p.due }}</span>
             </div>
@@ -839,15 +844,16 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
             <div style="font-family:'Montserrat';font-weight:700;font-size:16px;">CEU Event Log</div>
             <div style="font-size:12px;color:#8A8F95;font-weight:600;">Every event with attendees needs follow-up within 5 business days</div>
           </div>
-          <div style="display:grid;grid-template-columns:0.7fr 1.2fr 1.2fr 1.3fr 0.6fr 0.8fr 1fr 1.2fr 30px;gap:10px;padding:8px 18px;background:#FAF9F6;border-top:1px solid #E7E4DD;border-bottom:1px solid #E7E4DD;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#8A8F95;text-transform:uppercase;">
-            <span>Date</span><span>Agency</span><span>Firm</span><span>Course</span><span>Att.</span><span>Format</span><span>Follow-up</span><span>Status</span><span></span>
+          <div style="display:grid;grid-template-columns:0.7fr 1.15fr 1fr 1.05fr 1.15fr 0.5fr 0.75fr 0.9fr 1.1fr 30px;gap:10px;padding:8px 18px;background:#FAF9F6;border-top:1px solid #E7E4DD;border-bottom:1px solid #E7E4DD;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#8A8F95;text-transform:uppercase;">
+            <span>Date</span><span>Agency</span><span>Presenter</span><span>Firm</span><span>Course</span><span>Att.</span><span>Format</span><span>Follow-up</span><span>Status</span><span></span>
           </div>
           <sc-for list="{{ ceuEventRows }}" as="e" hint-placeholder-count="6">
-            <div style="display:grid;grid-template-columns:0.7fr 1.2fr 1.2fr 1.3fr 0.6fr 0.8fr 1fr 1.2fr 30px;gap:10px;align-items:center;padding:8px 18px;border-bottom:1px solid #F0EEE8;">
+            <div style="display:grid;grid-template-columns:0.7fr 1.15fr 1fr 1.05fr 1.15fr 0.5fr 0.75fr 0.9fr 1.1fr 30px;gap:10px;align-items:center;padding:8px 18px;border-bottom:1px solid #F0EEE8;">
               <span style="font-size:12.5px;font-weight:700;color:#6B7076;">{{ e.date }}</span>
               <select name="agent" ref="{{ e.refAgent }}" onChange="{{ e.set }}" style="border:1px solid transparent;border-radius:6px;padding:3px 2px;font-size:12px;background:transparent;color:#4A4F55;cursor:pointer;min-width:0;">
                 <sc-for list="{{ agentNames }}" as="an" hint-placeholder-count="5"><option value="{{ an }}">{{ an }}</option></sc-for>
               </select>
+              <input name="presenter" value="{{ e.presenter }}" onChange="{{ e.set }}" placeholder="Who presented" title="Each distinct presenter on a delivered event counts toward the agency's certified-presenter target" style="border:none;background:transparent;font-size:12.5px;font-weight:700;color:#0079C1;padding:2px 0;min-width:0;">
               <input name="firm" value="{{ e.firm }}" onChange="{{ e.set }}" style="border:none;background:transparent;font-size:12.5px;font-weight:600;padding:2px 0;min-width:0;">
               <input name="course" value="{{ e.course }}" onChange="{{ e.set }}" style="border:none;background:transparent;font-size:12.5px;padding:2px 0;min-width:0;">
               <input name="attendees" value="{{ e.att }}" onChange="{{ e.set }}" style="border:none;background:transparent;font-size:13px;font-weight:700;width:100%;padding:2px 0;min-width:0;">
@@ -1130,6 +1136,8 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
               <b>Health Score</b><span>Weighted 0–100 composite. Today only two things count: <b>Revenue pacing (65%)</b> and <b>Quoting activity (35%)</b> — Training, CEU/AIA, Strategic and Reporting are weighted 0 until those programs start. Raise them in Settings when they do; the per-agency breakdown is on each agency page.</span>
               <b>Revenue pacing</b><span>YTD 2026 vs the same months of 2025. New agencies with revenue score 80; new with none score 35.</span>
               <b>Quoting activity</b><span>Live quotes in the Quote Bank: 12 pts each, plus a value bonus (up to 45 at $500K+ open). Logged opportunities add 12 each.</span>
+              <b>CEU / AIA</b><span>Scored against a target that scales with the agency's sales, on the theory that a bigger book means a bigger staff to certify: $1M+ needs 3 certified presenters and 8 events/yr; $500K–1M → 2 and 6; $250–500K → 2 and 4; $100–250K → 1 and 3; under $100K → 1 and 2. 60 pts for presenter coverage, 40 for events delivered. A person counts as a certified presenter once they appear as the presenter on a delivered CEU event, so log each event with its presenter's name; a champion still working through the certification pipeline earns partial credit. Weighted 0 until you start the program — raise it in Settings.</span>
+              <b>Training</b><span>Share of the required courses in Settings that the agency has completed at or above the passing quiz score. Add your courses in Settings → Training to activate it.</span>
               <b>Reporting compliance</b><span>Days since last logged touch: ≤14d = 100 · ≤30d = 70 · ≤60d = 40 · beyond = 10.</span>
               <b>Category</b><span>Protect = keep close, don't break it · Build = invest to grow · Push = demand more from existing capacity · Fix = behavioral or structural problem · Exit = transition out.</span>
               <b>Spec stages</b><span>Target Identified → Specifier Engaged → Basis of Design → Named Specification → Bid Stage → Awarded. A spec is only "Named" when XtraLight appears on the drawing.</span>
@@ -1466,10 +1474,12 @@ class Component extends DCLogic {
   pushCloud(d) {
     if (!this.fb || !this.state.user || this.state.user === 'local') return;
     clearTimeout(this._pt);
+    this.setState({ syncing: true });
     this._pt = setTimeout(() => {
       this.fb.db.collection('channelos').doc('data')
         .set({ json: JSON.stringify(d), updated: Date.now(), by: this.state.user.email })
-        .catch(err => this.setState({ syncErr: 'Save failed: ' + err.message }));
+        .then(() => this.setState({ syncing: false, syncedAt: Date.now(), syncErr: '' }))
+        .catch(err => this.setState({ syncing: false, syncErr: 'Save failed: ' + err.message }));
     }, 600);
   }
 
@@ -1916,6 +1926,27 @@ class Component extends DCLogic {
     return a.ytd >= a.prev ? '#2E8B57' : '#C0433F';
   }
 
+  // ---- AIA CEU targets scale with agency sales (bigger book = bigger staff = more presenters/events) ----
+  ceuTarget(a) {
+    const y = a.ytd || 0;
+    if (y >= 1000000) return { pres: 3, ev: 8, tier: '$1M+' };
+    if (y >= 500000) return { pres: 2, ev: 6, tier: '$500K–1M' };
+    if (y >= 250000) return { pres: 2, ev: 4, tier: '$250–500K' };
+    if (y >= 100000) return { pres: 1, ev: 3, tier: '$100–250K' };
+    return { pres: 1, ev: 2, tier: 'Under $100K' };
+  }
+  // every distinct person who has delivered a CEU for an agency counts as a certified presenter (plus the pipeline champion once approved)
+  certifiedPresenters(name) {
+    const d = this.state.data, out = [];
+    (d.ceuEvents || []).forEach(e => {
+      if (e.agent !== name || e.status === 'Cancelled' || e.status === 'Scheduled') return;
+      const p = (e.presenter || '').trim();
+      if (p && out.indexOf(p) < 0) out.push(p);
+    });
+    const c = (d.ceuProfiles || []).find(x => x.agent === name);
+    if (c && c.approved && c.champName && out.indexOf(c.champName.trim()) < 0) out.push(c.champName.trim());
+    return out;
+  }
   // ---- Health scoring (weights editable in Settings) ----
   healthParts(a) {
     const d = this.state.data, st = d.settings || {};
@@ -1934,8 +1965,16 @@ class Component extends DCLogic {
     const pass = st.quizPass ?? 80;
     const doneCourses = courses.filter(cs => (d.trainingRecs || []).some(r => r.agent === a.n && r.course === cs && r.status === 'Completed' && (r.quiz == null || r.quiz >= pass))).length;
     const tr = courses.length ? Math.round(doneCourses / courses.length * 100) : 0;
+    const cTgt = this.ceuTarget(a);
+    const certPres = this.certifiedPresenters(a.n);
     let ceu = 0;
-    if (c) { ceu = c.approved ? 70 : c.presTraining ? 45 : c.acct ? 25 : 0; ceu = Math.min(100, ceu + (c.delivered || 0) * 10); }
+    if (c || certPres.length) {
+      // partial credit for a champion still moving through the pipeline
+      const partial = c && !c.approved ? (c.presAssessment ? 0.7 : c.presTraining ? 0.5 : c.access ? 0.3 : c.acct ? 0.15 : 0) : 0;
+      const cov = Math.min(cTgt.pres, certPres.length + partial) / cTgt.pres;
+      const delivered = (c && c.delivered) || 0;
+      ceu = Math.round(cov * 60 + Math.min(40, delivered / cTgt.ev * 40));
+    }
     const strat = Math.min(100, specs * 35);
     const days = a.last ? this.today() - a.last : 999;
     const rep = days <= 14 ? 100 : days <= 30 ? 70 : days <= 60 ? 40 : 10;
@@ -2049,9 +2088,9 @@ class Component extends DCLogic {
       doLogin: () => this.doLogin(),
       canSignOut: !!(S.user && S.user !== 'local'),
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
-      syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? '● Cloud sync on — ' + S.user.email : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
-      syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.25-2',
+      syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? (S.syncing ? '◌ Saving to cloud…' : S.syncedAt ? '● Saved to cloud ' + new Date(S.syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' — ' + S.user.email : '● Cloud sync on — ' + S.user.email) : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
+      syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' && S.syncing ? '#E0B252' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
+      buildTag: '2026.07.30-1',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
@@ -2328,6 +2367,11 @@ class Component extends DCLogic {
       out.detCeuStatus = cp ? cp.status : 'Not Started';
       out.detCeuColor = cp && cp.status === 'Presenter Certified' ? '#2E7D46' : cp && cp.status !== 'Not Started' ? '#9A6A08' : '#8A8F95';
       out.detCeuChamp = cp && cp.champName ? cp.champName : '— not named';
+      const ct = this.ceuTarget(a);
+      const cpNames = this.certifiedPresenters(a.n);
+      out.detCeuEvTarget = ct.ev; out.detCeuPresTarget = ct.pres; out.detCeuTier = ct.tier;
+      out.detCeuPresN = cpNames.length;
+      out.detCeuPresNames = cpNames.length ? ' — ' + cpNames.join(', ') : '';
       out.detCeuDelivered = cp ? cp.delivered : 0;
       out.detCeuAtt = cp ? cp.attendees : 0;
       out.detCeuNext = cp && cp.nextAction ? cp.nextAction : '—';
@@ -2364,6 +2408,11 @@ class Component extends DCLogic {
         }));
       }
       const days = a.last ? this.today() - a.last : null;
+      out.detLastISO = tdISO(a.last);
+      out.detNextISO = tdISO(a.next);
+      out.detTouch = () => { const idx = S.sel; this.mut(dd => { dd.agents[idx].last = this.today(); dd.agents[idx].touchMode = 'auto'; }); };
+      out.detSetLast = (e) => { const idx = S.sel, v = tdFrom(e.target.value); this.mut(dd => { dd.agents[idx].last = v; dd.agents[idx].touchMode = 'manual'; }); };
+      out.detSetNext = (e) => { const idx = S.sel, v = tdFrom(e.target.value); this.mut(dd => { dd.agents[idx].next = v; dd.agents[idx].touchMode = 'manual'; }); };
       out.detLast = this.fmtDate(a.last);
       out.detDays = days == null ? 'never logged' : days + ' days ago';
       out.detDaysColor = days == null || days > 30 ? '#C0433F' : days > 14 ? '#B8860B' : '#2E8B57';
@@ -2692,6 +2741,10 @@ class Component extends DCLogic {
       const now = this.today();
       out.ceuProfRows = profs.map((p, i) => ({
         agent: p.agent, champ: p.champName || '', delivered: p.delivered || 0, att: p.attendees || 0, next: p.nextAction || '',
+        evTarget: this.ceuTarget((d.agents || []).find(ag => ag.n === p.agent) || {}).ev,
+        presTarget: this.ceuTarget((d.agents || []).find(ag => ag.n === p.agent) || {}).pres,
+        presN: this.certifiedPresenters(p.agent).length,
+        evColor: (p.delivered || 0) >= this.ceuTarget((d.agents || []).find(ag => ag.n === p.agent) || {}).ev && this.certifiedPresenters(p.agent).length >= this.ceuTarget((d.agents || []).find(ag => ag.n === p.agent) || {}).pres ? '#2E7D46' : '#9A6A08',
         due: p.nextDue ? this.fmtDate(p.nextDue) : '—', dueColor: p.nextDue && p.nextDue < now ? '#C0433F' : '#6B7076',
         stBg: (CEUST[p.status] || CEUST['Not Started'])[0], stFg: (CEUST[p.status] || CEUST['Not Started'])[1],
         refStatus: (el) => { if (el) el.value = p.status; },
@@ -2707,7 +2760,7 @@ class Component extends DCLogic {
         })),
       }));
       out.ceuEventRows = evts.map((e, i) => ({
-        date: this.fmtDate(e.date), firm: e.firm, course: e.course, att: String(e.attendees || 0),
+        date: this.fmtDate(e.date), presenter: e.presenter || '', firm: e.firm, course: e.course, att: String(e.attendees || 0),
         fu: e.fuReq ? (e.fuDone ? 'Done ✓' : 'Open') : 'n/a',
         fuBg: !e.fuReq ? '#FAF9F6' : e.fuDone ? '#E4F2E8' : '#FBEAE9',
         fuFg: !e.fuReq ? '#B9B4A9' : e.fuDone ? '#2E7D46' : '#B23E3A',
