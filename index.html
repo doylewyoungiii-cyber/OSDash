@@ -646,7 +646,6 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
               <span style="font-size:12.5px;font-weight:700;color:#4A4F55;">{{ c.tier }}</span>
               <div style="min-width:0;">
                 <input type="date" value="{{ c.lastISO }}" onChange="{{ c.setLast }}" style="border:1px solid transparent;border-radius:6px;background:transparent;font-size:12px;color:#4A4F55;padding:2px 0;width:100%;min-width:0;cursor:pointer;" style-hover="border-color:#DAD6CD;">
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:{{ c.modeColor }};">{{ c.mode }}</div>
               </div>
               <span><span style="font-size:12px;font-weight:800;padding:3px 10px;border-radius:20px;background:{{ c.dBg }};color:{{ c.dFg }};">{{ c.days }}</span></span>
               <div style="min-width:0;">
@@ -2090,7 +2089,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? (S.syncing ? '◌ Saving to cloud…' : S.syncedAt ? '● Saved to cloud ' + new Date(S.syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' — ' + S.user.email : '● Cloud sync on — ' + S.user.email) : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' && S.syncing ? '#E0B252' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.30-1',
+      buildTag: '2026.07.30-2',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
@@ -2537,8 +2536,6 @@ class Component extends DCLogic {
           goTrip: () => { if (myTrips.length) this.setState({ view: 'calendar' }); },
           n: x.a.n, terr: x.a.terr, tier: x.a.tier,
           lastISO: toISO(x.a.last), nextISO: toISO(x.a.next), pri: x.a.pri || '—',
-          mode: x.a.touchMode === 'manual' ? 'MANUALLY UPDATED' : 'AUTO UPDATED',
-          modeColor: x.a.touchMode === 'manual' ? '#7B3FA0' : '#8A8F95',
           days: x.days == null ? 'never' : x.days + 'd', dBg: colors[0], dFg: colors[1],
           open: () => this.setState({ view: 'agents', sel: x.i }),
           touch: () => this.mut(dd => { dd.agents[x.i].last = now; dd.agents[x.i].touchMode = 'auto'; }),
