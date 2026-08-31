@@ -1217,6 +1217,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid #0079C1;outline-offset
                 <button onClick="{{ impConfirm }}" style="padding:9px 18px;background:#2E7D46;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-size:13px;font-weight:700;color:#FFFFFF;cursor:pointer;" style-hover="background:#256A3A;">✓ Confirm import</button>
               </div>
             </div>
+            <sc-if value="{{ impMonthRep }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:0 18px 12px;padding:10px 14px;background:#E9F1FA;border:1px solid #BDD5EC;border-radius:8px;font-size:12.5px;font-weight:600;color:#2B5B8A;">Single-month report detected — this will replace {{ impMonthName }} in your latest snapshot; all other months keep their current values.</div>
+            </sc-if>
             <sc-if value="{{ impDaily }}" hint-placeholder-val="{{ false }}">
               <div style="margin:0 18px 12px;padding:10px 14px;background:#FDF6E3;border:1px solid #EAD9A8;border-radius:8px;font-size:12.5px;font-weight:600;color:#8A6D1F;">Daily change report detected — these amounts will be <b>added</b> to your current monthly and agency totals. Weekly / YTD summary reports still replace totals as before.</div>
             </sc-if>
@@ -1785,7 +1788,7 @@ class Component extends DCLogic {
       if (!isNaN(n) && n > 30000 && n < 60000) { const dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000); return { y: dt.getUTCFullYear(), mo: dt.getUTCMonth() + 1, d: dt.getUTCDate() }; }
       return null;
     };
-    const seedMap = (this.state.data && this.state.data.custMap) || {};
+    const seedMap = Object.assign({ CAPITL: 'DLG' }, (this.state.data && this.state.data.custMap) || {});
     const details = [], votes = {};
     grid.forEach(r => {
       const cells = r.map(c => String(c == null ? '' : c).trim());
@@ -1852,7 +1855,9 @@ class Component extends DCLogic {
       return { code, name: code, sp: '', net: Math.round(a.net * 100) / 100, added: a.added, changed: a.changed, deleted: a.deleted };
     }).sort((x, y) => y.net - x.net);
     if (!rows.length) return { err: 'Recognized an order-detail report but found no order rows to summarize.' };
-    return { rows, custMap, monthly, latestYear, daily };
+    // single-month statement (e.g. "08-01 to 08-31"): not a daily delta, not a YTD snapshot
+    const monthRep = !daily && !!latestYear && !!domMo && Object.keys(moCount).length === 1;
+    return { rows, custMap, monthly, latestYear, daily, monthRep, repMo: domMo };
   }
   async handleImportFile(file) {
     this.setState({ impBusy: true, impErr: '', imp: null });
@@ -1921,7 +1926,7 @@ class Component extends DCLogic {
       const res = looksOrders ? this.parseOrderDetailGrid(grid) : this.parseGrid(grid, file.name);
       if (res.err) { this.setState({ impBusy: false, impErr: res.err }); return; }
       const rows = res.rows.map(r => Object.assign({}, r, { match: rm[r.code] || this.matchAgent(r.name) || '__skip' }));
-      this.setState({ impBusy: false, imp: { fileName: file.name, daily: !!res.daily, period: res.daily ? 'Daily + ' + period : (res.latestYear ? period + ' (' + res.latestYear + ' YTD)' : period), rows, custMap: res.custMap || null, monthly: res.monthly || null, latestYear: res.latestYear || null } });
+      this.setState({ impBusy: false, imp: { fileName: file.name, daily: !!res.daily, period: res.daily ? 'Daily + ' + period : (res.latestYear ? period + ' (' + res.latestYear + ' YTD)' : period), rows, custMap: res.custMap || null, monthly: res.monthly || null, latestYear: res.latestYear || null, monthRep: !!res.monthRep, repMo: res.repMo || null } });
     } catch (e) {
       this.setState({ impBusy: false, impErr: 'Could not read the file: ' + (e.message || e) });
     }
@@ -2124,7 +2129,7 @@ class Component extends DCLogic {
       signOut: () => { if (this.fb) this.fb.auth.signOut(); },
       syncLabel: S.syncErr ? S.syncErr : S.user && S.user !== 'local' ? (S.syncing ? '◌ Saving to cloud…' : S.syncedAt ? '● Saved to cloud ' + new Date(S.syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' — ' + S.user.email : '● Cloud sync on — ' + S.user.email) : S.user === 'local' ? 'Local mode — edits save to this browser' : 'Connecting…',
       syncColor: S.syncErr ? '#E8837E' : S.user && S.user !== 'local' && S.syncing ? '#E0B252' : S.user && S.user !== 'local' ? '#6CBF84' : '#7C838C',
-      buildTag: '2026.07.30-4',
+      buildTag: '2026.08.31-1',
       toggleNav: () => this.setState({ navOpen: !S.navOpen }),
       sideDisplay: S.isMobile ? 'none' : 'flex',
       contentPad: S.isMobile ? '14px 14px' : '22px 26px',
@@ -3130,7 +3135,7 @@ class Component extends DCLogic {
       if (S.imp && S.imp.kind !== 'quotes') {
         const matched = S.imp.rows.filter(r => r.match !== '__skip').length;
         out.impFile = S.imp.fileName;
-        out.impSummary = S.imp.rows.length + ' rows parsed · ' + matched + ' will import'; out.impDaily = !!S.imp.daily;
+        out.impSummary = S.imp.rows.length + ' rows parsed · ' + matched + ' will import'; out.impDaily = !!S.imp.daily; out.impMonthRep = !!S.imp.monthRep; out.impMonthName = S.imp.repMo ? ['January','February','March','April','May','June','July','August','September','October','November','December'][S.imp.repMo - 1] : '';
         out.impPeriod = S.imp.period;
         out.onImpPeriod = (e) => this.setState({ imp: Object.assign({}, S.imp, { period: e.target.value }) });
         out.impRows = S.imp.rows.map((r, i) => ({
@@ -3171,6 +3176,23 @@ class Component extends DCLogic {
               (imp.monthly || []).forEach((v, i) => { upMonthly[i] = Math.round(((upMonthly[i] || 0) + (v || 0)) * 100) / 100; });
               upRows = prev && prev.rows ? JSON.parse(JSON.stringify(prev.rows)) : [];
               finalRows.forEach(fr => {
+                const ex = upRows.find(r => r.agency === fr.agency);
+                if (ex) { ex.net = Math.round((ex.net + fr.net) * 100) / 100; ex.added = (ex.added || 0) + fr.added; ex.changed = (ex.changed || 0) + fr.changed; ex.deleted = (ex.deleted || 0) + fr.deleted; }
+                else upRows.push(fr);
+              });
+              upYr = imp.latestYear || 2026;
+            } else if (imp.monthRep && imp.repMo) {
+              // full-month statement: replace that month in the last snapshot, keep every other month
+              const m = imp.repMo - 1;
+              const prevUps = dd.uploads.filter(u => u.status === 'Imported' && u.kind !== 'quotes' && u.monthly && u.yr === (imp.latestYear || 2026)).sort((a, b) => (a.date || 0) - (b.date || 0));
+              let base = null;
+              for (let i = prevUps.length - 1; i >= 0; i--) if (!((prevUps[i].monthly || [])[m])) { base = prevUps[i]; break; }
+              const dirty = !base && prevUps.length > 0; // every prior snapshot already holds data for this month (e.g. daily imports)
+              if (!base) base = prevUps[prevUps.length - 1] || null;
+              upMonthly = base && base.monthly ? base.monthly.slice() : Array(12).fill(0);
+              upMonthly[m] = Math.round(((imp.monthly || [])[m] || 0) * 100) / 100;
+              upRows = base && base.rows ? JSON.parse(JSON.stringify(base.rows)) : [];
+              if (!dirty) finalRows.forEach(fr => {
                 const ex = upRows.find(r => r.agency === fr.agency);
                 if (ex) { ex.net = Math.round((ex.net + fr.net) * 100) / 100; ex.added = (ex.added || 0) + fr.added; ex.changed = (ex.changed || 0) + fr.changed; ex.deleted = (ex.deleted || 0) + fr.deleted; }
                 else upRows.push(fr);
